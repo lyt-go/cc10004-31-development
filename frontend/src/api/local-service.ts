@@ -61,6 +61,34 @@ export function resetModule(key: string): PageResult {
   return listEntries(key)
 }
 
+/**
+ * 审计规则改版：规则版本号 +1，规则保持「已生效」。
+ * 已建立的告警与升级记录保留原审计版本和触发值，改版只影响后续升级的告警。
+ */
+export function reviseAuditRule(id: number): ActionResult {
+  const key = 'auditcheck'
+  const meta = moduleMeta(key)
+  const rows = listRows(key)
+  const index = rows.findIndex((row) => Number(row.id) === id)
+  if (index < 0) {
+    return { ok: false, message: `没有找到编号为 ${id} 的${meta.entity}` }
+  }
+  const current = rows[index]
+  if (current.status !== '已生效') {
+    return { ok: false, message: `只有「已生效」的${meta.entity}才能改版，当前状态「${current.status}」` }
+  }
+  const versionText = String(current['规则版本'] ?? 'v1')
+  const versionNum = Number(versionText.replace(/^v/i, ''))
+  const nextVersion = `v${(Number.isFinite(versionNum) ? versionNum : 1) + 1}`
+  const next = [...rows]
+  next[index] = { ...current, 规则版本: nextVersion }
+  saveRows(key, next)
+  return {
+    ok: true,
+    message: `${meta.entity} ${current['规则编号'] ?? id} 已改版为 ${nextVersion}，历史告警仍保留原审计版本，后续升级才使用新版本`,
+  }
+}
+
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
   const header = ['编号', ...meta.fields, '当前状态']

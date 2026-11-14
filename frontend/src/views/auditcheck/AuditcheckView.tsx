@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { downloadEntries, listEntries, moduleMeta, runAction as applyAction } from '@/api/local-service'
+import { downloadEntries, listEntries, moduleMeta, reviseAuditRule, runAction as applyAction } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('auditcheck')
@@ -12,7 +12,8 @@ const columns = [
   "告警级别",
   "审计频率",
   "修复建议",
-  "规则状态"
+  "规则状态",
+  "规则版本"
 ]
 const actions = [
   "提交规则评审",
@@ -25,25 +26,12 @@ const statuses = [
   "已生效",
   "已关闭"
 ]
-const stats = [
-  {
-    "label": "审计规则总数",
-    "value": 0
-  },
-  {
-    "label": "已生效规则",
-    "value": 0
-  },
-  {
-    "label": "规则评审中",
-    "value": 0
-  }
-]
 
 export default function AuditcheckView() {
   const [rows, setRows] = useState<EntryRow[]>([])
   const [total, setTotal] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
+  const [noticeMessage, setNoticeMessage] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const filterFields = useMemo(() => columns.slice(0, 3), [])
 
@@ -64,6 +52,7 @@ export default function AuditcheckView() {
 
   function runAction(action: string, row: EntryRow) {
     setErrorMessage('')
+    setNoticeMessage('')
     const result = applyAction(meta.key, Number(row.id), action)
     if (!result.ok) {
       setErrorMessage(result.message)
@@ -71,6 +60,25 @@ export default function AuditcheckView() {
     }
     reload()
   }
+
+  // 规则改版：版本号 +1，已建立的告警保留原审计版本，只影响后续升级的告警
+  function revise(row: EntryRow) {
+    setErrorMessage('')
+    setNoticeMessage('')
+    const result = reviseAuditRule(Number(row.id))
+    if (!result.ok) {
+      setErrorMessage(result.message)
+      return
+    }
+    setNoticeMessage(result.message)
+    reload()
+  }
+
+  const stats = [
+    { label: '审计规则总数', value: rows.length },
+    { label: '已生效规则', value: rows.filter((row) => row.status === '已生效').length },
+    { label: '规则评审中', value: rows.filter((row) => row.status === '规则评审中').length },
+  ]
 
   return (
     <section className="page" data-module="auditcheck">
@@ -140,6 +148,9 @@ export default function AuditcheckView() {
                     {action}
                   </button>
                 ))}
+                <button className="link" type="button" onClick={() => revise(row)}>
+                  规则改版
+                </button>
               </td>
             </tr>
           ))}
@@ -153,6 +164,7 @@ export default function AuditcheckView() {
 
       <footer className="page-foot">
         <span>共 {total} 条数据审计记录</span>
+        {noticeMessage && <span className="notice-text">{noticeMessage}</span>}
         {errorMessage && <span className="error-text">{errorMessage}</span>}
       </footer>
     </section>
